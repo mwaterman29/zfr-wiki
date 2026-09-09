@@ -628,6 +628,13 @@ function simRareExpectedWins(raidId: number, dice: number, luck: number, elite =
 }
 
 // resolve one loot name -> its value profile
+// Resolve a loot NAME into what winning it actually pays. Order mirrors the game's own
+// resolveLoot (server/src/loot.ts): the literal "Bonus Gold" entry pays gold, anything
+// whose NAME matches a boost is that boost, and everything else is an item/decoration.
+//
+// It must key on the NAME, not drops.json's `gold` flag: Golden Dice and Golden Egg both
+// carry `gold: true` yet are a boost and a placeable, and the game ignores the flag for
+// exactly that reason. Trusting it here paid the Valentine's Golden Dice out as 600 gold.
 function resolveLootItem(name: string, recLevel: number) {
   const boost = boostByName[name];
   const drop = drops[name]?.value ?? drops[name];
@@ -636,24 +643,21 @@ function resolveLootItem(name: string, recLevel: number) {
   let sellValue = 0;
   let kind = "item";
   let placeKey: string | null = null;
-  if (boost) {
+  if (name === "Bonus Gold") {
+    kind = "gold";
+    goldValue = Math.round(recLevel * 100); // Bonus Gold = recommendedLevel × 100
+  } else if (boost) {
     kind = "boost";
     if (name === "Invasion Voucher") goldValue = VOUCHER_COST; // refunds its own cost
-  }
-  if (drop) {
-    if (drop.gold) {
-      kind = "gold";
-      goldValue = Math.round(recLevel * 100); // Bonus Gold = recommendedLevel × 100
-    } else if (drop.brains) {
-      kind = "brains";
-      brainValue = parseInt(String(name).replace(/[^0-9]/g, ""), 10) || 0;
-    } else if (drop.tile) {
-      kind = "decor";
-      placeKey = drop.tile;
-      const p = placeablesByKey[drop.tile];
-      sellValue = p ? sellValueOf(p) : awardedSellValue(drop.tile) ?? 0;
-      ref(drop.icon);
-    }
+  } else if (drop?.brains) {
+    kind = "brains";
+    brainValue = parseInt(String(name).replace(/[^0-9]/g, ""), 10) || 0;
+  } else if (drop?.tile) {
+    kind = "decor";
+    placeKey = drop.tile;
+    const p = placeablesByKey[drop.tile];
+    sellValue = p ? sellValueOf(p) : awardedSellValue(drop.tile) ?? 0;
+    ref(drop.icon);
   } else if (placeablesByName[name]) {
     kind = "decor";
     const p = placeablesByName[name];
