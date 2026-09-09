@@ -15,6 +15,7 @@ import upgradesJson from "./generated/upgrades.json";
 import economyJson from "./generated/economy.json";
 import combatJson from "./generated/combat.json";
 import socialJson from "./generated/social.json";
+import pvpJson from "./generated/pvp.json";
 
 import type {
   Crop,
@@ -33,6 +34,7 @@ import type {
   EconomyFile,
   CombatFile,
   SocialFile,
+  PvpFile,
 } from "./types";
 import { slugify } from "../lib/format";
 
@@ -55,6 +57,7 @@ export const upgrades = upgradesJson as unknown as UpgradesFile;
 export const economy = economyJson as unknown as EconomyFile;
 export const combat = combatJson as unknown as CombatFile;
 export const social = socialJson as unknown as SocialFile;
+export const pvp = pvpJson as unknown as PvpFile;
 
 // ---- Lookup maps -----------------------------------------------------------
 const by = <T,>(arr: T[], k: (t: T) => string) => Object.fromEntries(arr.map((t) => [k(t), t])) as Record<string, T>;

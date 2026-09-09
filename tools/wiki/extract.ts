@@ -96,6 +96,24 @@ import {
   FAVORITE_CROP_TOKEN_BONUS,
 } from "../../game/src/epicBoss/tokens";
 import { EPIC_BOSS_FAVORITE_CROPS } from "../../game/src/epicBoss/favoriteCrops";
+import {
+  PVP_ARMY_SIZE,
+  PVP_DEFENSE_CAP,
+  PVP_MIN_LEVEL,
+  PVP_DAILY_REWARDED_WINS,
+  PVP_DAILY_REWARDED_DEFENSES,
+  PVP_DAILY_ATTACKS_PER_PAIR,
+  PVP_REPLAYS_KEPT,
+  PVP_DEFENSE_DRIP_MS,
+  PVP_THROW_INTERVAL_MS,
+  PVP_WAVE_CADENCE,
+  PVP_TIER_POINT_THRESHOLDS,
+  PVP_TIER_REWARDS,
+  PVP_ROLE_BY_GROUP,
+  PVP_DEFENSE_ROLES,
+  PVP_STATION_BY_ROLE,
+  PVP_DEFENSE_PASSIVE_ABILITIES,
+} from "../../game/src/raid/pvp";
 import { FREE_DAILY_GIFTS, GIFT_GOLD_COST, GIFT_XP_REWARD, MAX_FRIENDS } from "../../game/src/net/protocol";
 // The gift reward roll is server-owned (the client never learns the contents until
 // the gift is opened), so these come from the worker's pure-logic module.
@@ -994,6 +1012,63 @@ writeJson("combat", {
 });
 
 // ===========================================================================
+// PVP  (friend invasions)
+// ===========================================================================
+// Which defense mode production actually runs is a Worker var, not a TS constant, so
+// read it out of wrangler.toml's production block rather than guessing: the two modes
+// play completely differently and the wiki should describe the live one.
+const wrangler = readFileSync(join(GAME, "server/wrangler.toml"), "utf8");
+const prodBlock = wrangler.slice(wrangler.indexOf("[env.production.vars]"));
+const prodVar = (name: string): string | null => {
+  for (const raw of prodBlock.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("#") || !line.startsWith(name)) continue;
+    const eq = line.indexOf("=");
+    if (eq < 0 || line.slice(0, eq).trim() !== name) continue;
+    return line.slice(eq + 1).trim().replace(/^"|"$/g, "");
+  }
+  return null;
+};
+const boostByKeyForPvp: Record<string, any> = Object.fromEntries(boostsOut.map((b: any) => [b.key, b]));
+const pvpTiers = PVP_TIER_REWARDS.map((rewards, i) => ({
+  tier: i + 1,
+  minPoints: i === 0 ? 0 : PVP_TIER_POINT_THRESHOLDS[i - 1],
+  maxPoints: i < PVP_TIER_POINT_THRESHOLDS.length ? PVP_TIER_POINT_THRESHOLDS[i] : null,
+  rewards: rewards.map((r) => ({
+    key: r.key,
+    qty: r.qty,
+    name: boostByKeyForPvp[r.key]?.name ?? r.key,
+    icon: boostByKeyForPvp[r.key]?.icon ?? null,
+  })),
+}));
+writeJson("pvp", {
+  enabled: prodVar("PVP_ENABLED") === "1",
+  defenseMode: prodVar("PVP_DEFENSE_MODE"),
+  minLevel: PVP_MIN_LEVEL,
+  armySize: PVP_ARMY_SIZE,
+  defenseCap: PVP_DEFENSE_CAP,
+  dailyRewardedWins: PVP_DAILY_REWARDED_WINS,
+  dailyRewardedDefenses: PVP_DAILY_REWARDED_DEFENSES,
+  dailyAttacksPerPair: PVP_DAILY_ATTACKS_PER_PAIR,
+  replaysKept: PVP_REPLAYS_KEPT,
+  defenseDripMs: PVP_DEFENSE_DRIP_MS,
+  throwIntervalMs: PVP_THROW_INTERVAL_MS,
+  wave: { maxActive: PVP_WAVE_CADENCE.maxActive, dripMs: PVP_WAVE_CADENCE.dripMs },
+  tierThresholds: PVP_TIER_POINT_THRESHOLDS,
+  tiers: pvpTiers,
+  // One class fills each job, so the number of jobs IS the defense cap.
+  roles: PVP_DEFENSE_ROLES.map((role) => ({
+    role,
+    group: Object.keys(PVP_ROLE_BY_GROUP).find((g) => (PVP_ROLE_BY_GROUP as any)[g] === role) ?? null,
+    stationX: (PVP_STATION_BY_ROLE as any)[role] ?? null,
+  })),
+  passiveAbilities: PVP_DEFENSE_PASSIVE_ABILITIES.map((key) => ({
+    key,
+    label: (ABILITY_POOL as any)[key]?.label ?? key,
+  })),
+});
+
+// ===========================================================================
 // SOCIAL  (friend gifting)
 // ===========================================================================
 // A gift's contents are rolled ONCE by the server when it is SENT and stored on the
@@ -1040,7 +1115,7 @@ for (const f of [
   "stex0006.png", "ZombieActorOldMcZombie.png", "FarmStageActorBoss.png", "fruitTreeApple.png",
   "golden_dice.png", "ability_buffAllStats.png", "ability_bash.png", "portrait_pirate.png",
   "zombieCombiner.png", "Icon_Quest_HarvestZombies.png", "main-icon.png", "icon_mutation_garlic.png",
-  "zombieGift.png",
+  "zombieGift.png", "Icon_Quest_Invasion.png",
 ]) ref(f);
 
 // Build a basename -> abspath index, walking dirs in priority order (first wins).

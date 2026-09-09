@@ -446,3 +446,33 @@ export interface MetaFile {
   builtAt: string;
   counts: Record<string, number>;
 }
+
+export interface PvpTier {
+  tier: number;
+  minPoints: number;
+  /** null on the top tier: nothing above it. */
+  maxPoints: number | null;
+  rewards: { key: string; qty: number; name: string; icon: string | null }[];
+}
+export interface PvpFile {
+  /** Whether friend invasions are live in production. */
+  enabled: boolean;
+  /** Which defense the production Worker runs: "formation" or "classic". */
+  defenseMode: string | null;
+  minLevel: number;
+  armySize: number;
+  defenseCap: number;
+  dailyRewardedWins: number;
+  dailyRewardedDefenses: number;
+  dailyAttacksPerPair: number;
+  replaysKept: number;
+  /** Gap between line reinforcements arriving. */
+  defenseDripMs: number;
+  throwIntervalMs: number;
+  wave: { maxActive: number; dripMs: number };
+  tierThresholds: number[];
+  tiers: PvpTier[];
+  /** One job per zombie class, front to back. */
+  roles: { role: string; group: string | null; stationX: number | null }[];
+  passiveAbilities: { key: string; label: string }[];
+}

@@ -18,6 +18,7 @@ const META: Record<string, { count?: number; note?: string }> = {
   "/epic-bosses": { count: epicBosses.length },
   "/quests": { count: questsFile.core.length + questsFile.reforged.length },
   "/social": { note: "Friends & gifting" },
+  "/invasions": { note: "PvP vs friends" },
   "/calculator": { note: "Best build per stat" },
   "/pot-simulator": { note: "Combine two zombies" },
   "/leveling": { note: `${economy.maxLevel} levels` },
