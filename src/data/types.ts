@@ -62,7 +62,8 @@ export interface ZombieAbility {
   key: string | null;
   label: string | null;
   effect: string | null;
-  bossGate: string | null;
+  /** Farm Life Force total at which this slot starts working (slot n = level n). */
+  lifeForceNeed: number;
   available: boolean;
 }
 export interface Zombie {
@@ -82,6 +83,8 @@ export interface Zombie {
   dex: number;
   focus: number;
   tier: number;
+  /** Tier used for lifeless-harvest odds (1 Green .. 5 Obsidian and specials). */
+  harvestTier: number;
   mutationMask: number;
   rewardOnly: boolean;
   marketHidden: boolean;
@@ -114,13 +117,13 @@ export interface Ability {
   kind: string | null;
   poolTier: number | null;
   groups: { group: string; tier: number }[];
-  bossGate: string | null;
   activated: Record<string, unknown> | null;
   combat: Record<string, number> | null;
 }
 export interface AbilitiesFile {
   list: Ability[];
-  tierBoss: Record<string, string>;
+  /** Life Force total each ability slot (1..4) needs. */
+  slotLifeForce: number[];
 }
 
 export interface Placeable {
@@ -131,6 +134,8 @@ export interface Placeable {
   themeLabel: string | null;
   seasonal: boolean;
   available: boolean;
+  /** Boss statues: which invasion grants it. Epic statues: not obtainable yet. */
+  statue: { raidId: number | null; golden: boolean; obtainable: boolean } | null;
   cost: number;
   brainsNeeded: boolean;
   level: number;
@@ -237,6 +242,8 @@ export interface LootItem {
   unique: boolean;
   boostKey: string | null;
   boostQty: number | null;
+  /** Rolled on its own at this chance every win, on top of the normal drop (banners). */
+  extraRate: number | null;
 }
 export interface LootTier {
   tier: number;
@@ -263,6 +270,8 @@ export interface RaidEvDice {
   dice: number;
   usable: boolean;
   tierProbs: number[];
+  /** Per-tier payout after banners leave the pick and empty tiers carry down. */
+  tierShares: number[];
   alwaysGoldEV: number;
   voucherRefundEV: number;
   decorSellEV: number;
@@ -279,6 +288,12 @@ export interface Raid {
   bossPortrait: string;
   enemyIcon: string;
   unlockLevel: number;
+  /** No-stakes practice mode: pays nothing, loses nothing, no cooldown. */
+  practice: boolean;
+  timeLimitMs: number;
+  /** Dual invasions: what each of the ten rungs adds. */
+  tierLadder: string[] | null;
+  statue: { stoneKey: string; goldenKey: string; stoneWins: number; goldenWins: number; stoneRate: number; goldenRate: number } | null;
   recommendedLevel: number;
   eliteRecommendedLevel: number;
   xp: number;
@@ -295,6 +310,8 @@ export interface Raid {
   eliteCost: number;
   hasVoucherInLoot: boolean;
   lootTiers: LootTier[];
+  /** Multipliers this raid applies to its enemies' base stats at fight time. */
+  statProfile: { hp: number; bossHp: number; damage: number } | null;
   stages: RaidStage[];
   /** The prize an ordinary win rolls for. */
   rare: { key: string; name: string } | null;
@@ -477,4 +494,29 @@ export interface PvpFile {
   /** One job per zombie class, front to back. */
   roles: { role: string; group: string | null; stationX: number | null }[];
   passiveAbilities: { key: string; label: string }[];
+}
+
+export interface LifeForceLevel {
+  level: number;
+  /** Total Life Force on the farm needed to reach this level. */
+  need: number;
+  /** Chance one adjacent crop grows its mutation into a harvested zombie. */
+  mutationChance: number;
+  /** Multiplier on Garden zombies' fertilize chance. */
+  fertilizeMultiplier: number;
+  /** Multiplier on a fertilized crop's (already doubled) payout. */
+  fertilizedCropValueMultiplier: number;
+  /** Multiplier on invasion brain drop chances. */
+  brainDropMultiplier: number;
+  /** Ability slots that work (0..4). */
+  abilitySlots: number;
+}
+
+export interface LifeForceFile {
+  maxLevel: number;
+  /** Fertilize boost stops growing at this level. */
+  fertilizeCapLevel: number;
+  levels: LifeForceLevel[];
+  /** Lifeless-harvest chance per harvest tier, indexed by level (0..maxLevel). */
+  harvestTiers: { tier: number; name: string; failByLevel: number[] }[];
 }

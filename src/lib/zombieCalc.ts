@@ -6,13 +6,15 @@
 //     FLAT on top after scaling (src/raid/CombatEngine.ts) - never multiplied.
 //   - HP = round(con x hpPerCon); DPS = round(str x powerPerStr x dex / interval).
 //   - heal amount/cast = max(1, round(power x healPowerMult)); casts fire on the
-//     dex-derived attack clock, so heal/sec = amount x (dex / interval). Garden only.
+//     dex-derived attack clock, so heal/sec = amount x (dex / interval). Any zombie
+//     whose ladder carries Heal.
 //   - one mutation per slot (5 slots; headless uses body/arm/neck + Pumpking), so
-//     max 5 mutations (4 for headless). 4 identical adjacent crops = a guaranteed
-//     imprint, and 8 plots/grow => at most 2 guaranteed mutations per grow. The
+//     max 5 mutations (4 for headless). Each adjacent crop adds the Life Force
+//     level's mutation chance, so how many crops guarantee an imprint (and how many
+//     imprints fit in 8 plots per grow) depends on Life Force. The
 //     Zombie Pot unions two masks per slot (higher tier wins), keeping the slot-1
 //     species, so combining stacks grows up to the per-slot cap.
-import { zombies, mutations, combat, raidById } from "../data";
+import { zombies, mutations, combat, raidById, lifeForce } from "../data";
 import type { Zombie, Mutation } from "../data/types";
 
 export type OptimizeKind = "con" | "dps" | "heal";
@@ -20,6 +22,8 @@ export type OptimizeKind = "con" | "dps" | "heal";
 export interface CalcSettings {
   optimize: OptimizeKind;
   level: number;
+  /** Farm Life Force level: sets the per-crop mutation chance and lifeless-harvest odds. */
+  lifeForce: number;
   mutations: boolean;
   combinations: boolean;
   includeBrains: boolean; // brains-market (Cupid, Bombie...)
@@ -39,9 +43,25 @@ const POWER = combat.powerPerStr; // 10
 const HP_PER_CON = combat.hpPerCon; // 100
 const ATK = combat.attackIntervalSec.player; // 2s base interval
 const HEAL_MULT = combat.heal.powerMult; // 0.5
-const HEAL_GROUP = "Garden"; // the only group with a heal ability (traits.ts)
 export const SCALE_CAP = combat.levelScaleEndLevel; // 25 - stats stop growing here
-export const CROPS_TO_GUARANTEE = Math.ceil(1 / combat.cropMutationChance); // 4
+
+/** How mutation crops work at a Life Force level: crops per mutation, the chance that
+ *  gives, and how many mutations fit around one grow. Below the level where the 8
+ *  neighbouring plots can guarantee one, a grow spends all 8 on one mutation. */
+export function cropPlan(lf: number): { perCrop: number; qty: number; chance: number; perGrow: number } {
+  const perCrop = lifeForce.levels[Math.max(0, Math.min(lifeForce.maxLevel, lf))].mutationChance;
+  const plots = combat.maxAdjacentPlots;
+  const need = Math.ceil(1 / perCrop - 1e-9);
+  const qty = Math.min(need, plots);
+  return { perCrop, qty, chance: Math.min(1, qty * perCrop), perGrow: Math.max(1, Math.floor(plots / qty)) };
+}
+
+/** Chance a harvest of this zombie comes out lifeless at a Life Force level. */
+export function lifelessChance(z: Zombie, lf: number): number {
+  return lifeForce.harvestTiers[z.harvestTier - 1]?.failByLevel[lf] ?? 0;
+}
+
+const canHeal = (z: Zombie) => z.abilities.some((a) => a.key === "heal" && a.available);
 
 export interface Stat3 {
   str: number;
@@ -207,13 +227,17 @@ function promotionFor(z: Zombie): Promotion | null {
 
 // ---- recipe --------------------------------------------------------------
 export interface GrowStep {
-  crops: { name: string; qty: number; mutation: string }[]; // 4x each to guarantee
+  crops: { name: string; qty: number; mutation: string }[]; // enough of each to guarantee it, when 8 plots allow
   gains: string[]; // mutation display names imprinted this grow
 }
 export interface Recipe {
   picks: { slot: string; name: string; stat: string; crop: string }[];
   grows: GrowStep[];
   combines: number; // number of pot merges
+  /** Chance each crop group imprints its mutation (1 = guaranteed). */
+  cropChance: number;
+  /** Chance each grow comes out lifeless (no zombie). */
+  lifeless: number;
   potMinutes: number;
   monolithMinutes: number;
   promotion: Promotion | null;
@@ -227,7 +251,7 @@ function statText(m: Mutation): string {
   return parts.join(", ");
 }
 
-function buildRecipe(z: Zombie, picks: Mutation[]): Recipe {
+function buildRecipe(z: Zombie, picks: Mutation[], lf: number): Recipe {
   const c = combat.combine;
   const picksOut = picks.map((m) => ({
     slot: m.slot,
@@ -236,12 +260,13 @@ function buildRecipe(z: Zombie, picks: Mutation[]): Recipe {
     crop: m.sources[0]?.cropName ?? m.key,
   }));
 
-  // Pack mutations into grows of at most 2 (each guaranteed by 4 identical crops).
+  // Pack as many mutations into each grow as its 8 neighbouring plots can guarantee.
+  const plan = cropPlan(lf);
   const grows: GrowStep[] = [];
-  for (let i = 0; i < picks.length; i += 2) {
-    const chunk = picks.slice(i, i + 2);
+  for (let i = 0; i < picks.length; i += plan.perGrow) {
+    const chunk = picks.slice(i, i + plan.perGrow);
     grows.push({
-      crops: chunk.map((m) => ({ name: m.sources[0]?.cropName ?? m.key, qty: CROPS_TO_GUARANTEE, mutation: m.name })),
+      crops: chunk.map((m) => ({ name: m.sources[0]?.cropName ?? m.key, qty: plan.qty, mutation: m.name })),
       gains: chunk.map((m) => m.name),
     });
   }
@@ -250,6 +275,8 @@ function buildRecipe(z: Zombie, picks: Mutation[]): Recipe {
     picks: picksOut,
     grows,
     combines: Math.max(0, grows.length - 1),
+    cropChance: plan.chance,
+    lifeless: lifelessChance(z, lf),
     potMinutes: Math.round(c.potDurationMs / 60000),
     monolithMinutes: Math.round((c.potDurationMs * c.monolithMult) / 60000),
     promotion: promotionFor(z),
@@ -270,7 +297,7 @@ export interface BuildResult {
 
 export function computeBuilds(s: CalcSettings): BuildResult[] {
   const pool = zombies.filter((z) => {
-    if (s.optimize === "heal" && z.group !== HEAL_GROUP) return false;
+    if (s.optimize === "heal" && !canHeal(z)) return false;
     // Unlock gate: market zombies carry a real unlock level; specials/event
     // zombies carry a sentinel (<=0) and pass, governed by their source toggle.
     if (unlockLevelOf(z) > s.level) return false;
@@ -288,7 +315,7 @@ export function computeBuilds(s: CalcSettings): BuildResult[] {
       value: build.value,
       baseValue: metricOf(s.optimize, base),
       picks: build.picks,
-      recipe: buildRecipe(z, build.picks),
+      recipe: buildRecipe(z, build.picks, s.lifeForce),
     };
   });
 

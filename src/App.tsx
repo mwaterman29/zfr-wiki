@@ -16,6 +16,7 @@ import { QuestsPage } from "./pages/Quests";
 import { SocialPage } from "./pages/Social";
 import { InvasionsPage } from "./pages/Invasions";
 import { FertilizingPage } from "./pages/Fertilizing";
+import { LifeForcePage } from "./pages/LifeForce";
 import { LevelingPage } from "./pages/Economy";
 import { ProgressionPage } from "./pages/Progression";
 import { AboutPage } from "./pages/About";
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/social" element={<SocialPage />} />
           <Route path="/invasions" element={<InvasionsPage />} />
           <Route path="/fertilizing" element={<FertilizingPage />} />
+          <Route path="/life-force" element={<LifeForcePage />} />
           <Route path="/leveling" element={<LevelingPage />} />
           <Route path="/economy" element={<LevelingPage />} />
           <Route path="/progression" element={<ProgressionPage />} />

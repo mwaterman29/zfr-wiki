@@ -123,7 +123,7 @@ export function searchItems(): SearchItem[] {
       id: `r-${r.id}`,
       type: "Raid",
       name: r.name,
-      subtitle: `boss ${r.bossName} · net ${num(r.winGoldFull)} gold`,
+      subtitle: r.practice ? `boss ${r.bossName} · practice` : `boss ${r.bossName} · net ${num(r.winGoldFull)} gold`,
       to: `/raids/${raidSlug(r)}`,
       iconFile: r.enemyIcon,
       keywords: `${r.bossName} ${r.rare?.name ?? ""}`,

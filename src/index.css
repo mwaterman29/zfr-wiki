@@ -24,6 +24,7 @@
     --class-silver: 130 140 158;
     --class-yellow: 214 158 46;
     --class-special: 155 89 182;
+    --class-obsidian: 112 92 168;
   }
 
   [data-theme="dark"] {
@@ -45,6 +46,7 @@
     --class-silver: 168 178 196;
     --class-yellow: 228 178 74;
     --class-special: 190 130 214;
+    --class-obsidian: 148 128 200;
   }
 
   /* System-preference default when the user hasn't chosen explicitly. */
@@ -68,6 +70,7 @@
       --class-silver: 168 178 196;
       --class-yellow: 228 178 74;
       --class-special: 190 130 214;
+      --class-obsidian: 148 128 200;
     }
   }
 

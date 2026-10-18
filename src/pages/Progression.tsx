@@ -23,7 +23,7 @@ function buildUnlocks(): Unlock[] {
   const out: Unlock[] = [];
   for (const c of crops) out.push({ id: `crop-${c.key}`, level: c.level, type: "Crop", name: c.name, to: `/crops/${cropSlug(c)}`, icon: c.icon, fallback: "none", detail: c.mutation ? `grants ${c.mutation.name}` : `${c.sell}g sell` });
   for (const z of zombies) if (z.level >= 1 && !z.marketHidden) out.push({ id: `z-${z.key}`, level: z.level, type: "Zombie", name: z.name, to: `/zombies/${zombieSlug(z)}`, icon: z.specialSprite, fallback: "zombie", detail: `${z.className} · ${z.dps} DPS` });
-  for (const r of raids) out.push({ id: `raid-${r.id}`, level: r.unlockLevel, type: "Raid", name: r.name, to: `/raids/${raidSlug(r)}`, icon: r.enemyIcon, fallback: "none", detail: `${r.winGoldFull}g / win` });
+  for (const r of raids) out.push({ id: `raid-${r.id}`, level: r.unlockLevel, type: "Raid", name: r.name, to: `/raids/${raidSlug(r)}`, icon: r.enemyIcon, fallback: "none", detail: r.practice ? "practice, no rewards" : `${r.winGoldFull}g / win` });
   for (const p of placeables) if ((p.category === "functional" || p.category === "tree") && p.level >= 1) out.push({ id: `p-${p.key}`, level: p.level, type: "Placeable", name: p.name, to: `/placeables/${placeableSlug(p)}`, icon: p.sprite, fallback: "none", detail: p.effect ?? p.category });
   for (const b of epicBosses) if (b.unlockLevel) out.push({ id: `eb-${b.id}`, level: b.unlockLevel, type: "Epic Boss", name: b.name, to: `/epic-bosses/${epicBossSlug(b)}`, icon: b.questIcon, fallback: "none", detail: `${b.costBrains} brains entry` });
   for (const u of upgrades.mapSize) out.push({ id: `farm-${u.size}`, level: u.level, type: "Farm size", name: u.name, to: "/progression", icon: u.icon, fallback: "none", detail: u.info });
