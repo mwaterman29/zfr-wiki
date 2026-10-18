@@ -17,6 +17,7 @@ const META: Record<string, { count?: number; note?: string }> = {
   "/raids": { count: raids.length },
   "/epic-bosses": { count: epicBosses.length },
   "/quests": { count: questsFile.core.length + questsFile.reforged.length },
+  "/life-force": { note: "Farm level from decor" },
   "/social": { note: "Friends & gifting" },
   "/invasions": { note: "PvP vs friends" },
   "/calculator": { note: "Best build per stat" },

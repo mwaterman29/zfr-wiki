@@ -7,7 +7,7 @@ import { Formula, Fx } from "../components/ui/Formula";
 import { PageHeader, Breadcrumbs, Section, Panel, KeyRow, Note } from "../components/ui/layout";
 import { RaidChip, EpicBossChip } from "../components/entities";
 import { PageIcon } from "../components/PageIcon";
-import { zombies, zombieSlug, zombieSlugs, combat, epicBossByZombieKey } from "../data";
+import { zombies, zombieSlug, zombieSlugs, combat, epicBossByZombieKey, lifeForce } from "../data";
 import { num, pct, titleCase, duration, levelLabel } from "../lib/format";
 import type { Zombie } from "../data/types";
 
@@ -139,6 +139,15 @@ export function ZombieDetail() {
             <KeyRow label="Grow time">{duration(z.growMs)}</KeyRow>
             <KeyRow label="Tier">{z.tier}</KeyRow>
             <KeyRow label="Ability tiers">{z.abilityTiers} of 4</KeyRow>
+            <KeyRow label={<Link to="/life-force" className="hover:text-primary-strong">Lifeless harvest</Link>}>
+              {z.harvestTier <= 1 ? (
+                "Never"
+              ) : (
+                <>
+                  {pct(lifeForce.harvestTiers[z.harvestTier - 1].failByLevel[0], 0)} at Life Force 0, safe from level {z.harvestTier - 1}
+                </>
+              )}
+            </KeyRow>
             {z.fertilizeChance !== null && (
               <KeyRow label={<Link to="/fertilizing" className="hover:text-primary-strong">Fertilizing</Link>}>
                 {pct(z.fertilizeChance)} per planted veggie crop
@@ -218,7 +227,7 @@ export function ZombieDetail() {
                     <th className="text-right">Tier</th>
                     <th>Ability</th>
                     <th>Effect</th>
-                    <th>Unlocked by beating</th>
+                    <th className="text-right">Life Force</th>
                     <th className="text-center">This class</th>
                   </tr>
                 </thead>
@@ -228,7 +237,7 @@ export function ZombieDetail() {
                       <td className="text-right tabular">t{a.tier}</td>
                       <td className="font-medium">{a.label ?? "-"}</td>
                       <td className="text-muted">{a.effect ?? "-"}</td>
-                      <td>{a.bossGate}</td>
+                      <td className="text-right tabular">Lv {a.tier} ({num(a.lifeForceNeed)})</td>
                       <td className="text-center">{a.available ? "✓" : "✗"}</td>
                     </tr>
                   ))}
@@ -236,8 +245,8 @@ export function ZombieDetail() {
               </table>
             </div>
             <p className="mt-2 text-xs text-muted">
-              Abilities are double-gated: this zombie's class carries {z.abilityTiers} tier{z.abilityTiers === 1 ? "" : "s"}, and each
-              tier also requires its boss beaten globally.
+              Abilities are double-gated: this zombie's class carries {z.abilityTiers} slot{z.abilityTiers === 1 ? "" : "s"}, and slot{" "}
+              <em>n</em> only works once your farm reaches <Link to="/life-force">Life Force</Link> level <em>n</em>.
               {z.hasOwnLadder && (
                 <>
                   {" "}

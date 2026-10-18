@@ -4,10 +4,14 @@ import { GameIcon } from "../components/ui/GameIcon";
 import { CropChip } from "../components/entities";
 import { PageIcon } from "../components/PageIcon";
 import { SourceCite } from "../components/ui/SourceCite";
-import { mutationsFile, mutations } from "../data";
+import { Link } from "react-router-dom";
+import { mutationsFile, mutations, lifeForce } from "../data";
 import { titleCase, pct } from "../lib/format";
 
 const SLOT_ORDER = ["head", "hair_eye", "arm", "body", "neck"];
+
+const lfStep = lifeForce.levels[1].mutationChance - lifeForce.levels[0].mutationChance;
+const lfSure = lifeForce.levels.find((l) => l.mutationChance >= 1)?.level;
 
 export function MutationsPage() {
   const bySlot = SLOT_ORDER.map((slot) => ({
@@ -77,11 +81,13 @@ export function MutationsPage() {
             <ul className="prose-tight list-disc space-y-1 pl-4 text-sm">
               <li>
                 Each adjacent plot growing a mutation crop adds{" "}
-                <span className="font-semibold">{pct(mutationsFile.chancePerPlot)}</span> to that mutation's chance, capped at 100%.
+                <span className="font-semibold">{pct(mutationsFile.chancePerPlot, 0)}</span> to that mutation's chance, plus{" "}
+                {pct(lfStep, 0)} per <Link to="/life-force">Life Force</Link> level, capped at 100%. One crop is a sure thing from level{" "}
+                {lfSure}.
               </li>
               <li>Adjacency is a distance test (within one plot-width on both axes) - up to 8 neighbours, corners included.</li>
               <li>Crop age is ignored; only the planted crop key is read, so bare seeds count. Rolled once, at harvest.</li>
-              <li>Rolls are independent per mutation; expected count = neighbours × {mutationsFile.chancePerPlot} regardless of layout.</li>
+              <li>Rolls are independent per mutation, so where you put the crops around the plot doesn't matter.</li>
               <li>Same-slot conflict: at harvest the lower random roll wins; in the Zombie Pot the higher catalog bit wins.</li>
               <li>Headless bodies refuse head and hair/eye entirely. Pumpking inverts it - only headless can grow one, but any zombie can wear one via the pot.</li>
               <li>A Mutant Monolith forces every eligible roll to succeed; pre-mutated seed zombies enter with their bit already set.</li>
@@ -96,7 +102,8 @@ export function MutationsPage() {
               <div className="mb-1 font-medium">Sources</div>
               <div className="flex flex-col gap-1">
                 <SourceCite file="src/zombie/mutations.ts" label="mutation catalog + bits" />
-                <SourceCite file="src/zombie/cropMutations.ts" label="adjacency + chance" />
+                <SourceCite file="src/zombie/cropMutations.ts" label="adjacency" />
+                <SourceCite file="src/lifeForce.ts" label="cropMutationChance" />
                 <SourceCite file="src/Field.ts" label="harvest roll" />
               </div>
             </div>

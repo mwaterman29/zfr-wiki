@@ -6,13 +6,13 @@ import { Badge } from "../components/ui/Badge";
 import { ZombieIcon } from "../components/ui/ZombieIcon";
 import { GameIcon } from "../components/ui/GameIcon";
 import { SourceCite } from "../components/ui/SourceCite";
-import { cropByKey, mutationByKey, zombieSlug } from "../data";
-import { num } from "../lib/format";
+import { cropByKey, mutationByKey, zombieSlug, lifeForce } from "../data";
+import { num, pct } from "../lib/format";
 import {
   computeBuilds,
   metricUnit,
   OPTIMIZE_LABELS,
-  CROPS_TO_GUARANTEE,
+  cropPlan,
   type CalcSettings,
   type OptimizeKind,
   type BuildResult,
@@ -23,6 +23,7 @@ const STORAGE_KEY = "zfr-calc-settings-v2";
 const DEFAULTS: CalcSettings = {
   optimize: "con",
   level: 45,
+  lifeForce: 4,
   mutations: true,
   combinations: true,
   includeBrains: false,
@@ -81,6 +82,7 @@ export function ZombieCalculatorPage() {
   const results = useMemo(() => computeBuilds(s), [s]);
   const [open, setOpen] = useState<string | null>(null);
   const unit = metricUnit(s.optimize);
+  const plan = cropPlan(s.lifeForce);
 
   return (
     <div>
@@ -109,7 +111,11 @@ export function ZombieCalculatorPage() {
                 </option>
               ))}
             </select>
-            {s.optimize === "heal" && <div className="mt-1.5 text-xs text-muted">Limited to Garden zombies (the only healers).</div>}
+            {s.optimize === "heal" && (
+              <div className="mt-1.5 text-xs text-muted">
+                Zombies whose ladder carries Heal. Gardens heal from their station; others only between swings, so they heal less than shown.
+              </div>
+            )}
           </div>
 
           {/* Level */}
@@ -135,6 +141,20 @@ export function ZombieCalculatorPage() {
                 className="w-16 rounded-md border border-border bg-surface px-2 py-1.5 text-sm tabular outline-none focus:border-primary"
               />
             </div>
+            <label className="mb-1.5 mt-3 block text-xs font-semibold uppercase tracking-wide text-muted">
+              <Link to="/life-force" className="hover:text-primary-strong">Life Force</Link> level
+            </label>
+            <select
+              value={s.lifeForce}
+              onChange={(e) => patch({ lifeForce: Number(e.target.value) })}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
+            >
+              {lifeForce.levels.map((l) => (
+                <option key={l.level} value={l.level}>
+                  {l.level} ({pct(l.mutationChance, 0)} per mutation crop)
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Build power */}
@@ -250,9 +270,10 @@ export function ZombieCalculatorPage() {
 
       <Note tone="muted">
         Mutations add flat to the level-scaled stat (never multiplied), one per slot - 5 slots, or body/arm/neck plus Pumpking for
-        headless. Four identical crops on a growing zombie's neighbouring plots guarantee that mutation, and 8 plots per grow means at
-        most two guaranteed mutations per grow; the Zombie Pot then unions two builds slot-by-slot (higher tier wins) while keeping the
-        slot-1 species. Combining resets veterancy, so rank up after.
+        headless. Each identical crop on a growing zombie's neighbouring plots adds your Life Force level's chance to that mutation, so
+        at level {s.lifeForce} it takes {plan.qty} crop{plan.qty === 1 ? "" : "s"} to {plan.chance >= 1 ? "guarantee" : "reach the best odds for"} one, and 8 plots
+        per grow fit {plan.perGrow}. The Zombie Pot then unions two builds slot-by-slot (higher tier wins) while keeping the slot-1
+        species. Combining resets veterancy, so rank up after.
         <div className="mt-1">
           <SourceCite file="src/zombie/mutations.ts" label="mutations.ts" /> · <SourceCite file="src/zombie/cropMutations.ts" label="cropMutations.ts" /> ·{" "}
           <SourceCite file="src/raid/combatStats.ts" label="combatStats.ts" />
@@ -356,7 +377,9 @@ function RecipeView({ r, unit, showCombine }: { r: BuildResult; unit: string; sh
               )}
             </ol>
             <p className="mt-2 text-xs text-muted">
-              {CROPS_TO_GUARANTEE} of one crop = a guaranteed imprint. Pot takes {recipe.potMinutes}m ({recipe.monolithMinutes}m with the Clay Monolith).
+              {recipe.grows[0]?.crops[0]?.qty ?? 0} of one crop ={" "}
+              {recipe.cropChance >= 1 ? "a guaranteed imprint" : `a ${pct(recipe.cropChance, 0)} imprint`}.
+              {recipe.lifeless > 0 && ` Each grow has a ${pct(recipe.lifeless, 0)} chance to come out lifeless at this Life Force.`} Pot takes {recipe.potMinutes}m ({recipe.monolithMinutes}m with the Clay Monolith).
             </p>
           </>
         )}

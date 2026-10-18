@@ -124,8 +124,9 @@ export function PotSimulatorPage() {
         <ul className="prose-tight list-disc space-y-1 pl-5 text-sm text-muted">
           <li><span className="text-text">Species</span> comes from slot 1 - the child is a fresh zombie of that species, so base stats do not carry over from stronger parents.</li>
           <li><span className="text-text">Mutations</span> merge per slot (one of each of the 5 slots); a same-slot clash keeps the higher-tier mutation. A headless child sheds head and hair/eye mutations, except an inherited Pumpking.</li>
-          <li><span className="text-text">Colour ladder (guaranteed)</span>: combining two <em>identical</em> zombies breeds them up one colour - two Greens to Blue (needs the Blue Grave), two Blues to Red (Red Grave), two Reds to Silver at level {COMBINE_SPECIAL_LEVEL}+. This is the only route to Silver, and it always works.</li>
-          <li><span className="text-text">Tier-5 special ({Math.round(result.chance * 100)}% roll)</span>: at level {COMBINE_SPECIAL_LEVEL}+, <em>any</em> two zombies - any tier, even two basic greens, and they need not match or even share a group - have a {Math.round(result.chance * 100)}% chance to become slot 1's group special (Zombutterfly for a Garden slot 1, Skull Head for Headless, and so on). You do <strong>not</strong> need silver or matched parents. One catch: a matched pair that owns its next grave climbs the ladder instead, so to fish the roll with cheap zombies, use two different ones. The roll is fixed per pair but revealed only after the combine finishes.</li>
+          <li><span className="text-text">Colour ladder (guaranteed)</span>: combining two <em>identical</em> zombies breeds them up one colour - two Greens to Blue (needs the Blue Grave), two Blues to Red (Red Grave), two Reds to Silver at level {COMBINE_SPECIAL_LEVEL}+. It always works.</li>
+          <li><span className="text-text">Obsidian</span> zombies can't be bred; they're bought with the Obsidian Grave placed. In slot 1 an Obsidian always comes back as itself, with no special roll; in slot 2 it only passes on its mutations.</li>
+          <li><span className="text-text">Tier-5 special ({Math.round(result.chance * 100)}% roll)</span>: at level {COMBINE_SPECIAL_LEVEL}+, <em>any</em> two zombies - any tier, even two basic greens, and they need not match or even share a group - have a {Math.round(result.chance * 100)}% chance to become slot 1's group special (Zombutterfly for a Garden slot 1, Skull Head for Headless, and so on). You do <strong>not</strong> need silver or matched parents. One catch: a matched pair that owns its next grave climbs the ladder instead, so to fish the roll with cheap zombies, use two different ones. An Obsidian in slot 1 never rolls. The roll is fixed per pair but revealed only after the combine finishes.</li>
           <li><span className="text-text">Veterancy</span> resets to Newbie, so rank up after combining, not before.</li>
         </ul>
         <div className="mt-2">
@@ -254,7 +255,7 @@ function OutcomeRow({ tag, outcome, promotion, level, highlight, sole }: { tag: 
   if (!z) return null;
   const base = scaledStats(z, level);
   const f = { str: base.str + outcome.bonus.str, con: base.con + outcome.bonus.con, dex: base.dex + outcome.bonus.dex };
-  const heal = z.group === "Garden" ? healPerSec(f.str, f.dex) : null;
+  const heal = z.abilities.some((a) => a.key === "heal" && a.available) ? healPerSec(f.str, f.dex) : null;
   return (
     <div className={`flex items-center gap-3 rounded-md border p-2 ${highlight ? "border-primary/40 bg-primary/5" : "border-border bg-surface"}`}>
       <Badge className={sole ? "hidden" : ""} color={highlight ? "rgb(var(--class-special))" : "rgb(var(--text-muted))"}>{tag}</Badge>

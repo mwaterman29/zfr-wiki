@@ -34,6 +34,7 @@ export const NAV: NavGroup[] = [
     items: [
       { label: "Raids", to: "/raids", icon: "portrait_pirate.png" },
       { label: "Epic Bosses", to: "/epic-bosses", icon: "epic_dr-groundhog_portrait.png" },
+      { label: "Life Force", to: "/life-force", icon: "lifeForce.png", keywords: "lf level decor mutation chance lifeless harvest ability slots" },
       { label: "Quests", to: "/quests", icon: "Icon_Quest_HarvestZombies.png" },
       { label: "Social", to: "/social", icon: "zombieGift.png", keywords: "friends gifting gift chance odds brains" },
       { label: "Invasions", to: "/invasions", icon: "Icon_Quest_Invasion.png", keywords: "pvp friend invasion attack defense versus" },

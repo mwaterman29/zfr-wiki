@@ -5,7 +5,8 @@ import { PageHeader, Section, Panel, Note } from "../components/ui/layout";
 import { SourceCite } from "../components/ui/SourceCite";
 import { abilities, abilitiesFile, zombies } from "../data";
 import { PageIcon } from "../components/PageIcon";
-import { titleCase } from "../lib/format";
+import { titleCase, num } from "../lib/format";
+import { Link } from "react-router-dom";
 import type { Ability } from "../data/types";
 
 const OWN_LADDER_COUNT = zombies.filter((z) => z.hasOwnLadder).length;
@@ -41,7 +42,6 @@ export function AbilitiesPage() {
         </div>
       ),
     },
-    { key: "boss", header: "Boss gate", value: (a) => a.bossGate ?? "", render: (a) => <span className="text-sm">{a.bossGate ?? "-"}</span> },
   ];
 
   const heal = abilities.find((a) => a.key === "heal");
@@ -50,8 +50,9 @@ export function AbilitiesPage() {
     <div>
       <PageHeader title="Abilities" icon={<PageIcon to="/abilities" />} kicker={`${abilities.length} abilities`}>
         <p>
-          Combat abilities are granted by a zombie's group across four tiers. A tier is usable when the zombie's class carries it and its
-          boss has been beaten ({Object.values(abilitiesFile.tierBoss).join(", ")}). The Groups column below is the group ladder;
+          Combat abilities are granted by a zombie's group across four slots. A slot works when the zombie's class carries it and your
+          farm's <Link to="/life-force">Life Force</Link> level is at least the slot number (
+          {abilitiesFile.slotLifeForce.map((n) => num(n)).join(" / ")} Life Force). The Groups column below is the group ladder;
           {" "}{OWN_LADDER_COUNT} named zombies carry their own ladder instead, shown on their own pages.
         </p>
       </PageHeader>
@@ -93,10 +94,11 @@ export function AbilitiesPage() {
       </Section>
 
       {heal && (
-        <Section title="Heal (Garden, tier 1)">
+        <Section title="Heal">
           <Panel>
             <p className="prose-tight text-sm">
-              Heal is Garden-exclusive. Amount = <span className="font-mono">round(power × 0.5)</span> where power = str × 10, so a
+              Any zombie whose ladder carries Heal or Heal AOE heals. Gardens heal from their station; other healers only heal on the
+              walk-in and between swings, never while fighting. Amount = <span className="font-mono">round(power × 0.5)</span> where power = str × 10, so a
               healer's strength is its throughput. Cadence is the healer's own <span className="font-mono">2.0 ⁄ dex</span> seconds.
               Targeting picks the lowest HP-<em>fraction</em> deployed ally (not lowest absolute HP), excluding only itself - so healers
               are valid targets and high-HP tanks can soak heals while squishies die. <span className="font-mono">wallInWay</span> blocks

@@ -16,7 +16,21 @@ import { execSync } from "node:child_process";
 
 // ---- Game modules (all headless-safe under tsx) ----------------------------
 import { SLOTS, MUTATION_LIST } from "../../game/src/zombie/mutations";
-import { CROP_MUTATIONS, CROP_MUTATION_CHANCE } from "../../game/src/zombie/cropMutations";
+import { CROP_MUTATIONS } from "../../game/src/zombie/cropMutations";
+import { PRIZE_CROPS } from "../../game/src/cropUnlocks";
+import {
+  cropMutationChance,
+  lifeForceLevelRows,
+  harvestFailureChance,
+  fertilizeMultiplier,
+  brainDropLifeForceMultiplier,
+  fertilizedCropValueMultiplier,
+  HARVEST_TIER_NAMES,
+  MAX_LIFE_FORCE_LEVEL,
+  LEGACY_LIFE_FORCE_LEVEL_CAP,
+  abilitySlotRequirement,
+  zombieHarvestTier,
+} from "../../game/src/lifeForce";
 import { classTierRank, CLASS_COLOR } from "../../game/src/zombie/taxonomy";
 import {
   GROUP_ABILITIES,
@@ -24,7 +38,6 @@ import {
   unitAbilityAt,
   ABILITY_POOL,
   ABILITY_TIER,
-  TIER_BOSS,
   VET_RANKS,
   VET_THRESHOLDS,
   VET_STAT_STEP,
@@ -79,7 +92,19 @@ import {
 } from "../../game/src/raid/RaidCatalog";
 import { raidBoostBundle } from "../../game/src/raid/lootBundles";
 import { rollLootTier } from "../../game/src/raid/LootTable";
-import { ELITE_BRAIN_LUCK } from "../../game/src/raid/eliteInvasion";
+import { itemLootTable } from "../../game/src/raid/dropTable";
+import { isPracticeRaid, effectiveUnlockLevel } from "../../game/src/raid/practice";
+import { fightTimeLimitMs, TIER_LADDER } from "../../game/src/raid/dualInvasion";
+import {
+  bossStatueFor,
+  BOSS_STATUES,
+  EPIC_BOSS_STATUES,
+  BOSS_STATUE_WINS,
+  GOLDEN_STATUE_WINS,
+  BOSS_STATUE_RATE,
+  GOLDEN_STATUE_RATE,
+} from "../../game/src/raid/bossStatues";
+import { ELITE_BRAIN_LUCK, eliteProfile } from "../../game/src/raid/eliteInvasion";
 import { awardedSellValue } from "../../game/src/awardSellValue";
 import { ACTIVE_THEMES, decorAvailable, themeLabel, EVERGREEN } from "../../game/src/decorThemes";
 import { ECONOMY, buyXp } from "../../game/src/economy";
@@ -135,7 +160,13 @@ const PLOW_COST = 10; // src/JobSystem.ts:28 (module-private const)
 // src/zombie/ZombieField.ts, module-private FERTILIZE_BY_TIER. Per-combat-tier chance that a
 // DEPLOYED Garden zombie fertilizes a freshly planted veggie crop. Tier 3 and 4 share
 // a rate; non-Garden groups never roll at all.
-const FERTILIZE_BY_TIER: Record<number, number> = { 1: 0.04, 2: 0.06, 3: 0.08, 4: 0.08, 5: 0.12 };
+// It isn't exported, so read the literal straight out of the source rather than copying it.
+const FERTILIZE_BY_TIER: Record<number, number> = (() => {
+  const src = readFileSync(join(GAME, "src/zombie/ZombieField.ts"), "utf8");
+  const m = src.match(/const FERTILIZE_BY_TIER[^=]*=\s*\{([^}]*)\}/);
+  if (!m) throw new Error("FERTILIZE_BY_TIER not found in src/zombie/ZombieField.ts");
+  return Object.fromEntries([...m[1].matchAll(/(\d+)\s*:\s*([\d.]+)/g)].map(([, t, c]) => [Number(t), Number(c)]));
+})();
 const MAX_INBOX = 200; // server/src/index.ts, module-private MAX_INBOX
 
 // ---- Small utils -----------------------------------------------------------
@@ -161,7 +192,9 @@ function mulberry32(seed: number) {
 }
 
 // ---- Load raw JSON ---------------------------------------------------------
-const plants = readJson("plants.json") as any[];
+// Prize crops (plants.json `prize: true`) are built but switched off in the game: the client
+// drops them at load and the Worker refuses to plant them. Leave them out until they ship.
+const plants = (readJson("plants.json") as any[]).filter((p) => !p.prize || PRIZE_CROPS.live);
 const zombiesRaw = readJson("zombies.json") as any[];
 const placeablesRaw = readJson("placeables.json") as any[];
 const boosts = readJson("boosts.json") as any[];
@@ -235,7 +268,39 @@ const mutations = MUTATION_LIST.map((m: any) => {
     unlockLevel: Number.isFinite(minLevel) ? minLevel : null,
   };
 });
-writeJson("mutations", { slots: SLOTS, chancePerPlot: CROP_MUTATION_CHANCE, list: mutations });
+writeJson("mutations", {
+  slots: SLOTS,
+  chancePerPlot: cropMutationChance(0),
+  list: mutations,
+});
+
+// ===========================================================================
+// LIFE FORCE  (src/lifeForce.ts: the farm-wide level that drives mutation odds,
+// lifeless harvests, ability slots, fertilizing, brain drops)
+// ===========================================================================
+{
+  const levels = [0, ...lifeForceLevelRows().map((r) => r.level)].map((level) => ({
+    level,
+    need: level === 0 ? 0 : lifeForceLevelRows()[level - 1].need,
+    mutationChance: round(cropMutationChance(level), 4),
+    fertilizeMultiplier: round(fertilizeMultiplier(level), 4),
+    fertilizedCropValueMultiplier: round(fertilizedCropValueMultiplier(level), 4),
+    brainDropMultiplier: round(brainDropLifeForceMultiplier(level), 4),
+    abilitySlots: Math.min(4, level),
+  }));
+  // Lifeless chance per harvest tier (1 = Green .. 5 = Obsidian + special) at each level.
+  const harvestTiers = HARVEST_TIER_NAMES.map((name, i) => ({
+    tier: i + 1,
+    name,
+    failByLevel: levels.map((l) => round(harvestFailureChance(i + 1, l.level), 4)),
+  }));
+  writeJson("life-force", {
+    maxLevel: MAX_LIFE_FORCE_LEVEL,
+    fertilizeCapLevel: LEGACY_LIFE_FORCE_LEVEL_CAP,
+    levels,
+    harvestTiers,
+  });
+}
 
 // ===========================================================================
 // CROPS
@@ -339,8 +404,9 @@ const zombies = zombiesRaw.map((z) => {
   if (z.category === "mutant") acquisition.push("pre-mutated");
   if (acquisition.length === 0) acquisition.push(z.brainsNeeded ? "market-brains" : "market-gold");
 
-  // This unit's OWN ability ladder (tiers 1..4), each gated on beating a boss. Most
-  // zombies just take their group's row, but SPECIAL_ABILITIES gives eleven named units
+  // This unit's OWN ability ladder (tiers 1..4); slot n works from Life Force level n
+  // (src/lifeForce.ts abilitySlotUnlocked). Most zombies just take their group's row, but
+  // SPECIAL_ABILITIES gives named units
   // a ladder of their own (Dr. Zombie heals, the Ninjombies get Turbo Speed, the Minis
   // Proto/Zombug carry Resurrect), so ask the game which ability THIS key has rather
   // than reading the group matrix directly.
@@ -353,7 +419,7 @@ const zombies = zombiesRaw.map((z) => {
       key: abKey,
       label: meta?.label ?? null,
       effect: meta?.effect ?? null,
-      bossGate: (TIER_BOSS as any)[tier] ?? null,
+      lifeForceNeed: abilitySlotRequirement(tier),
       available: tier <= abilityTiers,
     };
   });
@@ -375,6 +441,8 @@ const zombies = zombiesRaw.map((z) => {
     dex: z.dex,
     focus: z.focus,
     tier: z.tier,
+    // Life Force harvest tier: colour rank, with Obsidian and every special at 5.
+    harvestTier: zombieHarvestTier(z),
     mutationMask: z.mutation ?? 0,
     rewardOnly: !!z.rewardOnly,
     marketHidden: !!z.marketHidden,
@@ -432,12 +500,11 @@ const abilities = Object.entries(ABILITY_POOL as Record<string, any>).map(([key,
     kind: (ABILITY_KIND as any)[key] ?? null,
     poolTier,
     groups: abilityGroups[key] ?? [],
-    bossGate: poolTier ? (TIER_BOSS as any)[poolTier] ?? null : null,
     activated: (ACTIVATED_ABILITY as any)[key] ?? null,
     combat: (ABILITY_COMBAT as any)[key] ?? null,
   };
 });
-writeJson("abilities", { list: abilities, tierBoss: TIER_BOSS });
+writeJson("abilities", { list: abilities, slotLifeForce: [1, 2, 3, 4].map(abilitySlotRequirement) });
 
 // ===========================================================================
 // PLACEABLES  (decor / functional / trees / graves / monoliths)
@@ -459,6 +526,18 @@ function functionalEffect(p: any): string | null {
   return bits.length ? bits.join(", ") : null;
 }
 
+// Statues: invasion boss statues are handed over on set win counts and then roll per win;
+// the epic boss statues exist as items but nothing grants them yet (src/raid/bossStatues.ts).
+const statueSource: Record<string, { raidId: number; golden: boolean } | "unobtainable"> = {};
+for (const [id, st] of Object.entries(BOSS_STATUES)) {
+  statueSource[st.tile] = { raidId: Number(id), golden: false };
+  statueSource[st.goldenTile] = { raidId: Number(id), golden: true };
+}
+for (const st of Object.values(EPIC_BOSS_STATUES)) {
+  statueSource[st.tile] = "unobtainable";
+  statueSource[st.goldenTile] = "unobtainable";
+}
+
 const placeables = placeablesRaw.map((p) => {
   ref(p.sprite);
   ref(p.growingSprite);
@@ -470,7 +549,13 @@ const placeables = placeablesRaw.map((p) => {
     theme: p.theme ?? null,
     themeLabel: p.theme ? themeLabel(p.theme) : null,
     seasonal: !!p.seasonal,
-    available: decorAvailable(p),
+    available: statueSource[p.key] === "unobtainable" ? false : decorAvailable(p),
+    statue: (() => {
+      const s = statueSource[p.key];
+      if (!s) return null;
+      if (s === "unobtainable") return { raidId: null, golden: false, obtainable: false };
+      return { raidId: s.raidId, golden: s.golden, obtainable: true };
+    })(),
     cost: p.cost,
     brainsNeeded: !!p.brainsNeeded,
     level: p.level,
@@ -478,6 +563,8 @@ const placeables = placeablesRaw.map((p) => {
     authoredXp: p.xp,
     tileW: p.tileW,
     tileH: p.tileH,
+    lifeForce: p.lifeForce ?? 0,
+    lifeForceSource: p.lifeForceSource ?? null,
     sprite: p.sprite,
     growingSprite: p.growingSprite || null,
     armyMax: p.armyMax || 0,
@@ -682,7 +769,13 @@ function resolveLootItem(name: string, recLevel: number) {
     placeKey = p.key;
     sellValue = sellValueOf(p);
   }
-  return { name, kind, goldValue, brainValue, sellValue, placeKey, unique: !!drop?.unique, boostKey: boost?.key ?? null, boostQty: boost ? raidBoostBundle(boost.key) : null };
+  return {
+    name, kind, goldValue, brainValue, sellValue, placeKey, unique: !!drop?.unique,
+    boostKey: boost?.key ?? null, boostQty: boost ? raidBoostBundle(boost.key) : null,
+    // Faction banners: rolled on their own at this chance every win, on top of the normal
+    // drop, and never take a share of their tier (src/raid/LootTable.ts extraDropsFor).
+    extraRate: drop?.extraRate > 0 ? Math.min(1, drop.extraRate) : null,
+  };
 }
 
 const raids = raidsRaw.map((r) => {
@@ -697,17 +790,27 @@ const raids = raidsRaw.map((r) => {
   const flatItems = lootTiers.flatMap((t) => t.items.map((it) => ({ ...it, tier: t.tier })));
   const hasVoucherInLoot = flatItems.some((i) => i.name === "Invasion Voucher");
 
-  // waves
+  // waves. Some story raids scale their enemies' stats at fight time (eliteInvasion.ts
+  // STORY_PROFILES); apply that so the wave totals match the real fight.
+  const prof = eliteProfile(r.id, false);
+  const hpMult = (isBoss: boolean) => (prof ? (isBoss ? prof.bossCon : undefined) ?? prof.con : 1);
+  const dpsMult = prof ? prof.str * prof.dex : 1;
+  const scaled = (e: any, isBoss: boolean) =>
+    e ? { hp: Math.round(e.hp * hpMult(isBoss)), dps: round(e.meleeDps * dpsMult) } : { hp: null, dps: null };
   const stages = (r.stages as any[]).map((st, i) => {
     const sumFreq = (st.weighted ?? []).reduce((a: number, w: any) => a + (w.frequency || 0), 0) || 1;
     const minions = (st.weighted ?? []).map((w: any) => {
       const count = st.population ? Math.max(1, Math.round((st.population * (w.frequency || 0)) / sumFreq)) : 1;
       const e = enemyByKey[w.enemy];
-      return { key: w.enemy, name: w.enemy, count, hpEach: e?.hp ?? null, dpsEach: e?.meleeDps ?? null };
+      const s = scaled(e, false);
+      return { key: w.enemy, name: w.enemy, count, hpEach: s.hp, dpsEach: s.dps };
     });
     // non-weighted explicit lists
-    const explicit = (st.enemyKeys ?? []).map((k: string) => ({ key: k, name: k, count: 1, hpEach: enemyByKey[k]?.hp ?? null, dpsEach: enemyByKey[k]?.meleeDps ?? null }));
-    const boss = st.bossKey ? enemyByKey[st.bossKey] : null;
+    const explicit = (st.enemyKeys ?? []).map((k: string) => {
+      const s = scaled(enemyByKey[k], false);
+      return { key: k, name: k, count: 1, hpEach: s.hp, dpsEach: s.dps };
+    });
+    const boss = st.bossKey && enemyByKey[st.bossKey] ? (({ hp, dps }) => ({ hp, meleeDps: dps }))(scaled(enemyByKey[st.bossKey], true)) : null;
     const roster = minions.length ? minions : explicit;
     const totalHp = (boss?.hp ?? 0) + roster.reduce((a: number, m: any) => a + (m.hpEach ?? 0) * m.count, 0);
     const totalDps = (boss?.meleeDps ?? 0) + roster.reduce((a: number, m: any) => a + (m.dpsEach ?? 0) * m.count, 0);
@@ -728,16 +831,29 @@ const raids = raidsRaw.map((r) => {
   const byDice = [] as any[];
   for (let dice = 0; dice <= 5; dice++) {
     const probs = lootTierProbs(dice);
+    // The game's own per-tier shares: banner (extraRate) entries are pulled out of the pick,
+    // and a tier left empty hands its share down to the next one (src/raid/dropTable.ts).
+    const table = itemLootTable({
+      loot: r.loot as string[][],
+      dice,
+      extraRateOf: (n: string) => drops[n]?.extraRate ?? 0,
+      bundleOf: () => 1,
+      bonusGold: 0,
+    });
+    const shares = new Array(lootTiers.length).fill(0);
+    for (const t of table.tiers) shares[t.tier] = t.chance;
     // per-tier expected contributions
     let alwaysGoldEV = 0;
     let voucherRefundEV = 0;
     let decorSellEV = 0;
     let lootBrainsEV = 0;
+    for (const it of flatItems) if (it.extraRate && it.kind === "decor") decorSellEV += it.extraRate * it.sellValue;
     lootTiers.forEach((t) => {
-      const p = probs[t.tier] ?? 0;
-      if (!t.items.length || p === 0) return;
-      const share = p / t.items.length;
-      for (const it of t.items) {
+      const ordinary = t.items.filter((it) => !it.extraRate);
+      const p = shares[t.tier] ?? 0;
+      if (!ordinary.length || p === 0) return;
+      const share = p / ordinary.length;
+      for (const it of ordinary) {
         // "always" gold = bonus gold + voucher refund
         if (it.kind === "gold") alwaysGoldEV += share * it.goldValue;
         if (it.name === "Invasion Voucher") {
@@ -752,6 +868,8 @@ const raids = raidsRaw.map((r) => {
       dice,
       usable: dice <= maxDice,
       tierProbs: probs.map((x) => round(x, 5)),
+      // What each tier actually pays out after banners leave and empty tiers carry down.
+      tierShares: shares.map((x) => round(x, 5)),
       alwaysGoldEV: round(alwaysGoldEV),
       voucherRefundEV: round(voucherRefundEV),
       decorSellEV: round(decorSellEV),
@@ -781,7 +899,18 @@ const raids = raidsRaw.map((r) => {
     bossName: r.bossName,
     bossPortrait: r.bossPortrait,
     enemyIcon: r.enemyIcon,
-    unlockLevel: r.unlockLevel,
+    // Practice lowers the dual invasions to their practice level (src/raid/practice.ts).
+    unlockLevel: effectiveUnlockLevel(r),
+    // Dual invasions are a no-stakes practice mode right now: no rewards, no losses.
+    practice: isPracticeRaid(r.id),
+    timeLimitMs: fightTimeLimitMs(r.id),
+    tierLadder: (TIER_LADDER as any)[r.id] ?? null,
+    statue: (() => {
+      const st = bossStatueFor(r.id);
+      return st
+        ? { stoneKey: st.tile, goldenKey: st.goldenTile, stoneWins: BOSS_STATUE_WINS, goldenWins: GOLDEN_STATUE_WINS, stoneRate: BOSS_STATUE_RATE, goldenRate: GOLDEN_STATUE_RATE }
+        : null;
+    })(),
     recommendedLevel: r.recommendedLevel,
     eliteRecommendedLevel: r.eliteRecommendedLevel,
     xp: r.xp,
@@ -799,6 +928,8 @@ const raids = raidsRaw.map((r) => {
     hasVoucherInLoot,
     lootTiers,
     stages,
+    // Multipliers this raid applies to its enemies' base stats, or null.
+    statProfile: prof ? { hp: round(prof.con, 3), bossHp: round(hpMult(true), 3), damage: round(dpsMult, 3) } : null,
     rare,
     rareElite,
     ev: {
@@ -1005,7 +1136,7 @@ writeJson("combat", {
   },
   // Heal ability magnitude/cadence. Consts are module-private in BattleSim.ts.
   heal: { powerMult: 0.5, aoeMs: 20000 }, // src/raid/BattleSim.ts:249,252
-  cropMutationChance: CROP_MUTATION_CHANCE, // per adjacent mutagen plot; 4 = guaranteed
+  cropMutationChance: cropMutationChance(0), // value calculated by the newer game source
   maxAdjacentPlots: 8, // src/zombie/cropMutations.ts (plotsTouch)
   raid: { armyCap: ARMY_CAP, minArmy: MIN_ARMY, cooldownMs: RAID_COOLDOWN_MS, eliteBrainLuck: ELITE_BRAIN_LUCK, brainPityInvasions: BRAIN_PITY_INVASIONS, rareZombiePityWins: RAID_ZOMBIE_PITY_WINS },
   themes: { active: ACTIVE_THEMES, evergreen: EVERGREEN },
@@ -1115,7 +1246,7 @@ for (const f of [
   "stex0006.png", "ZombieActorOldMcZombie.png", "FarmStageActorBoss.png", "fruitTreeApple.png",
   "golden_dice.png", "ability_buffAllStats.png", "ability_bash.png", "portrait_pirate.png",
   "zombieCombiner.png", "Icon_Quest_HarvestZombies.png", "main-icon.png", "icon_mutation_garlic.png",
-  "zombieGift.png", "Icon_Quest_Invasion.png",
+  "zombieGift.png", "Icon_Quest_Invasion.png", "lifeForce.png",
 ]) ref(f);
 
 // Build a basename -> abspath index, walking dirs in priority order (first wins).

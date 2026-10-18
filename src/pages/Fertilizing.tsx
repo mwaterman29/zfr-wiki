@@ -3,7 +3,7 @@ import { PageHeader, Breadcrumbs, Section } from "../components/ui/layout";
 import { GameIcon } from "../components/ui/GameIcon";
 import { ZombieIcon } from "../components/ui/ZombieIcon";
 import { SourceCite } from "../components/ui/SourceCite";
-import { zombies, zombieSlug } from "../data";
+import { zombies, zombieSlug, lifeForce } from "../data";
 import { pct } from "../lib/format";
 
 /** Every zombie that can fertilize, best rate first. */
@@ -13,6 +13,8 @@ const GARDEN_ZOMBIES = zombies
 
 /** The distinct rates in play, for the stacking matrix columns. */
 const RATES = [...new Set(GARDEN_ZOMBIES.map((z) => z.fertilizeChance as number))].sort((a, b) => a - b);
+
+const capMult = +lifeForce.levels[lifeForce.fertilizeCapLevel].fertilizeMultiplier.toFixed(2);
 
 /** Deployed-copy counts used for the "at least one hit" stacking table. */
 const STACK_COUNTS = [1, 2, 3, 4, 5, 6, 8, 10];
@@ -37,6 +39,11 @@ export function FertilizingPage() {
           Every time you plant a veggie crop, each Garden zombie deployed on your farm has a chance to fertilize the
           crop. This chance is determined by the tier of the zombie. Zombie crops cannot be fertilized. Zombies in the
           mausoleum cannot fertilize crops.
+        </p>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-text">
+          Your farm's <Link to="/life-force">Life Force</Link> level multiplies every rate below, up to ×{capMult} at level{" "}
+          {lifeForce.fertilizeCapLevel}. Above level 5, each level also adds 2.5% to what a fertilized crop pays. The rates below are
+          at level 0.
         </p>
         <div className="mt-2">
           <SourceCite file="src/zombie/ZombieField.ts" label="tryFertilize" />

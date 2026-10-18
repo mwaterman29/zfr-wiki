@@ -4,16 +4,26 @@ import { GameIcon } from "../components/ui/GameIcon";
 import { Gold, Brains, Xp } from "../components/ui/Currency";
 import { Badge, SeasonalBadge, UnavailableBadge } from "../components/ui/Badge";
 import { PageHeader, Breadcrumbs, Section, Panel, KeyRow, Note } from "../components/ui/layout";
-import { placeables, placeableSlug, placeableSlugs, economy } from "../data";
+import { placeables, placeableSlug, placeableSlugs, economy, raids } from "../data";
+import { RaidChip } from "../components/entities";
 import { PageIcon } from "../components/PageIcon";
-import { num, duration, titleCase, levelLabel } from "../lib/format";
+import { num, pct, duration, titleCase, levelLabel } from "../lib/format";
 import type { Placeable } from "../data/types";
 
 const CATS = ["functional", "tree", "decor", "reward"];
 
+const statueRaid = (p: Placeable) => (p.statue?.raidId ? raids.find((r) => r.id === p.statue!.raidId) : undefined);
+
 function PriceCell({ p }: { p: Placeable }) {
   return p.brainsNeeded ? <Brains value={p.cost} /> : <Gold value={p.cost} />;
 }
+
+const lfPerTile = (p: Placeable) => {
+  const tiles = p.tileW * p.tileH;
+  return p.lifeForce > 0 && tiles > 0 ? p.lifeForce / tiles : null;
+};
+const goldPerLf = (p: Placeable) =>
+  !p.brainsNeeded && p.category !== "reward" && p.cost > 0 && p.lifeForce > 0 ? p.cost / p.lifeForce : null;
 
 export function PlaceablesIndex() {
   const columns: Column<Placeable>[] = [
@@ -36,6 +46,37 @@ export function PlaceablesIndex() {
     { key: "xp", header: "XP", sortable: true, align: "right", value: (p) => p.xp, render: (p) => <Xp value={p.xp} /> },
     { key: "sell", header: "Sell", sortable: true, align: "right", value: (p) => p.sellValue, render: (p) => <Gold value={p.sellValue} /> },
     { key: "tiles", header: "Tiles", align: "right", value: (p) => p.tileW * p.tileH, render: (p) => `${p.tileW}×${p.tileH}` },
+    {
+      key: "lifeForce",
+      header: "Life Force",
+      sortable: true,
+      align: "right",
+      value: (p) => (p.lifeForce > 0 ? p.lifeForce : null),
+      render: (p) => (p.lifeForce > 0 ? num(p.lifeForce) : <span className="text-muted">-</span>),
+    },
+    {
+      key: "lifeForcePerTile",
+      header: "LF / tile",
+      sortable: true,
+      align: "right",
+      value: (p) => lfPerTile(p),
+      render: (p) => {
+        const v = lfPerTile(p);
+        return v !== null ? v.toFixed(2) : <span className="text-muted">-</span>;
+      },
+    },
+    {
+      key: "goldPerLifeForce",
+      header: "Gold / LF",
+      sortable: true,
+      align: "right",
+      hint: "Gold cost divided by Life Force. Brain-priced and reward items are excluded.",
+      value: (p) => goldPerLf(p),
+      render: (p) => {
+        const v = goldPerLf(p);
+        return v !== null ? num(v, { digits: 2 }) : <span className="text-muted">-</span>;
+      },
+    },
     {
       key: "effect",
       header: "Effect / yield",
@@ -98,11 +139,27 @@ export function PlaceableDetail() {
           <KeyRow label="XP on purchase"><Xp value={p.xp} /></KeyRow>
           <KeyRow label="Sell value"><Gold value={p.sellValue} /></KeyRow>
           <KeyRow label="Footprint">{p.tileW}×{p.tileH} tiles</KeyRow>
+          <KeyRow label={<Link to="/life-force">Life Force</Link>}>{p.lifeForce > 0 ? `+${num(p.lifeForce)} while placed` : "None"}</KeyRow>
           {p.armyMax > 0 && <KeyRow label="Army cap">+{p.armyMax}</KeyRow>}
           {p.zombieSlots > 0 && <KeyRow label="Zombie storage">+{p.zombieSlots}</KeyRow>}
           {p.storageSlots > 0 && <KeyRow label="Item storage">+{p.storageSlots}</KeyRow>}
           {p.growMs > 0 && <KeyRow label="Regrow">{duration(p.growMs)}</KeyRow>}
           {p.harvestValue > 0 && <KeyRow label="Harvest"><Gold value={p.harvestValue} /></KeyRow>}
+          {p.statue && (
+            <KeyRow label="How to get">
+              {statueRaid(p) ? (
+                <span className="text-right">
+                  <RaidChip id={statueRaid(p)!.id} />{" "}
+                  <span className="text-xs text-muted">
+                    win {p.statue.golden ? statueRaid(p)!.statue!.goldenWins : statueRaid(p)!.statue!.stoneWins}, then{" "}
+                    {pct(p.statue.golden ? statueRaid(p)!.statue!.goldenRate : statueRaid(p)!.statue!.stoneRate, 0)} per win
+                  </span>
+                </span>
+              ) : (
+                "Not obtainable yet"
+              )}
+            </KeyRow>
+          )}
           <KeyRow label="Buyable now">{p.available ? "Yes" : `No${p.themeLabel ? ` - ${p.themeLabel}` : ""}`}</KeyRow>
         </Panel>
         <div>

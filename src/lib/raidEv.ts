@@ -55,6 +55,7 @@ export interface ComputedRaidEv {
    *  different one on an elite (Brain Ticket) fight, so this is not always raid.rare. */
   rarePrize: { key: string; name: string } | null;
   tierProbs: number[];
+  tierShares: number[];
 }
 
 export function computeRaidEv(raid: Raid, s: RaidSettings): ComputedRaidEv {
@@ -80,5 +81,6 @@ export function computeRaidEv(raid: Raid, s: RaidSettings): ComputedRaidEv {
     rareExpectedWins: s.elite ? cell.rareExpectedWinsElite : cell.rareExpectedWinsNormal,
     rarePrize: (s.elite ? raid.rareElite : null) ?? raid.rare,
     tierProbs: cell.tierProbs,
+    tierShares: cell.tierShares,
   };
 }

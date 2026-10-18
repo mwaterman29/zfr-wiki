@@ -35,6 +35,7 @@ const CLASS_VAR: Record<string, string> = {
   silver: "--class-silver",
   yellow: "--class-yellow",
   special: "--class-special",
+  obsidian: "--class-obsidian",
 };
 
 export function ClassBadge({ value }: { value: string | null | undefined }) {
