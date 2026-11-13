@@ -1193,10 +1193,8 @@ writeJson("pvp", {
     group: Object.keys(PVP_ROLE_BY_GROUP).find((g) => (PVP_ROLE_BY_GROUP as any)[g] === role) ?? null,
     stationX: (PVP_STATION_BY_ROLE as any)[role] ?? null,
   })),
-  passiveAbilities: PVP_DEFENSE_PASSIVE_ABILITIES.map((key) => ({
-    key,
-    label: (ABILITY_POOL as any)[key]?.label ?? key,
-  })),
+    // Removed upstream: PvP defenders now keep all abilities, so there is no curated passive list.
+  passiveAbilities: [] as { key: string; label: string }[],
 });
 
 // ===========================================================================
